@@ -16,7 +16,7 @@
     },
     "devDependencies": {
         "@types/jsonwebtoken": "^9.0.10",
-        "@types/node": "^24.0.3"
+        "@types/node": "^20.19.19"
     },
     "name": "backend",
     "version": "1.0.0",
