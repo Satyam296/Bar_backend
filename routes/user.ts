@@ -163,6 +163,7 @@ routers.post("/loyal", async (req, res) => {
         point: "150",
         data: qrData,
         qrImage,
+        reviewSubmitted: false // Initialize as false
       });
 
       await newLoyal.save();
@@ -230,17 +231,20 @@ routers.post("/submit-review-proof", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Review already submitted" });
     }
 
-    user.point = (parseInt(user.point) + 200).toString();
+    user.point = (parseInt(user.point) + 50).toString();
     user.reviewSubmitted = true;
     await user.save();
 
-    return res.status(200).json({ message: "Points updated and review marked." });
+    return res.status(200).json({ 
+      message: "Points updated and review marked.",
+      pointsAdded: 50
+    });
   } catch (err) {
     console.error("Review proof submission failed:", err);
     return res.status(500).json({ message: "Server error" });
   }
 });
-//@ts-ignore
+
 //@ts-ignore
 routers.post("/check", async (req, res) => {
   try {
@@ -274,7 +278,8 @@ routers.post("/check", async (req, res) => {
               name: customer.name,
               phone: customer.phone,
               email: customer.email,
-              point: customer.point
+              point: customer.point,
+              reviewSubmitted: customer.reviewSubmitted || false
             }
           });
         }
@@ -298,7 +303,8 @@ routers.post("/check", async (req, res) => {
             name: customer.name,
             phone: customer.phone,
             email: customer.email,
-            point: customer.point
+            point: customer.point,
+            reviewSubmitted: customer.reviewSubmitted || false
           }
         });
       }
@@ -307,7 +313,7 @@ routers.post("/check", async (req, res) => {
     // If no customer found
     return res.status(404).json({
       valid: false,
-      message: "Customer not found in database"
+      message: "Customer not found or invalid QR code"
     });
 
   } catch (error) {
@@ -319,7 +325,6 @@ routers.post("/check", async (req, res) => {
   }
 });
 
-// ADD THIS ENDPOINT - Add Points to Customer
 //@ts-ignore
 routers.post("/add-points", async (req, res) => {
   try {
@@ -342,10 +347,12 @@ routers.post("/add-points", async (req, res) => {
     const currentPoints = parseInt(customer.point) || 0;
     const newPoints = currentPoints + parseInt(points);
     
+    // Reset reviewSubmitted to false when points are added (new service taken)
     customer.point = newPoints.toString();
+    customer.reviewSubmitted = false; // Reset review eligibility for new service
     await customer.save();
 
-    console.log(`Added ${points} points to ${customer.name}. New total: ${newPoints}`);
+    console.log(`Added ${points} points to ${customer.name}. New total: ${newPoints}. Review eligibility reset.`);
 
     return res.status(200).json({
       message: "Points added successfully",
@@ -354,7 +361,8 @@ routers.post("/add-points", async (req, res) => {
         _id: customer._id,
         name: customer.name,
         phone: customer.phone,
-        point: customer.point
+        point: customer.point,
+        reviewSubmitted: customer.reviewSubmitted
       }
     });
 
@@ -367,4 +375,4 @@ routers.post("/add-points", async (req, res) => {
 });
 
 
-module.exports = routers; 
+module.exports = routers;

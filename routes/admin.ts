@@ -88,89 +88,110 @@ routerss.post("/all", verifyAdminTokens, async (req, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+
+//@ts-ignore
 //@ts-ignore
 routerss.post("/check", async (req, res) => {
   const qrContent = req.body.qrContent;
   if (!qrContent) {
-    return res.status(400).json({ error: "QR content is required" });
+    return res.status(400).json({ 
+      valid: false,
+      message: "QR content is required" 
+    });
   }
 
   try {
     console.log("Received QR content:", qrContent);
 
-    let userIdentifier;
+    let decodedPayload;
     
-    // Try to decode as JWT first
+    // Try to decode as JWT token first
     try {
       const decoded = jwts.verify(qrContent, JWT_SECRETSS);
-      userIdentifier = decoded.qrPayload;
-      console.log("Decoded from JWT:", userIdentifier);
-    } catch (jwtErr) {
-      // If not JWT, use the raw content
-      userIdentifier = qrContent;
-      console.log("Using raw QR content:", userIdentifier);
+      console.log("JWT decoded successfully:", decoded);
+      
+      if (decoded.qrPayload) {
+        decodedPayload = decoded.qrPayload;
+      } else {
+        // If no qrPayload, try to use the raw content as payload
+        decodedPayload = qrContent;
+      }
+    } catch (jwtError) {
+      // If JWT verification fails, use raw content directly
+      //@ts-ignore
+      console.log("Not a valid JWT, using raw content:", jwtError.message);
+      decodedPayload = qrContent;
     }
 
-    // Parse the identifier (expected format: "name-phone")
-    const parts = userIdentifier.split("-");
-    if (parts.length < 2) {
-      return res.status(400).json({ error: "Invalid QR format. Expected: name-phone" });
-    }
+    console.log("Final payload to search:", decodedPayload);
 
-    const name = parts[0];
-    const phone = parts[1];
+    // Parse the payload (expected format: "name-phone")
+    if (decodedPayload.includes('-')) {
+      const [name, phone] = decodedPayload.split('-');
+      console.log("Searching for customer:", { name, phone });
 
-    console.log("Searching for customer:", { name, phone });
-
-    // First, try to find customer in LoyalModel
-    let user = await AdminLoyalModel.findOne({ name, phone });
-
-    // If not found in LoyalModel, check BookingsModel
-    if (!user) {
-      console.log("Customer not found in LoyalModel, checking BookingsModel...");
+      // Search in LoyalModel first
+      let customer = await AdminLoyalModel.findOne({ name, phone });
       
-      const bookingUser = await AdminBookModel.findOne({ name, phone });
+      if (customer) {
+        console.log("Customer found in loyal database");
+        return res.status(200).json({
+          valid: true,
+          customer: {
+            _id: customer._id,
+            name: customer.name,
+            phone: customer.phone,
+            email: customer.email,
+            point: customer.point || 0
+          }
+        });
+      }
+
+      // If not found in LoyalModel, check BookingsModel
+      console.log("Customer not found in loyal database, checking bookings...");
+      const bookingCustomer = await AdminBookModel.findOne({ name, phone });
       
-      if (bookingUser) {
-        console.log("Customer found in BookingsModel, creating in LoyalModel...");
+      if (bookingCustomer) {
+        console.log("Customer found in bookings, creating loyal customer...");
         
-        // Create customer in LoyalModel based on booking data
-        user = new AdminLoyalModel({
+        // Create new loyal customer from booking data
+        const newLoyalCustomer = new AdminLoyalModel({
           name: name,
           phone: phone,
-          point: 150, // Start with 150 points as initial loyalty
+          email: bookingCustomer.email || "",
+          point: 150, // Initial points
           isLoyal: true,
           data: qrContent
         });
         
-        await user.save();
-        console.log("New loyal customer created from booking:", { name, phone });
-      } else {
-        console.log("Customer not found in any database");
-        return res.status(404).json({ 
-          valid: false,
-          message: "Customer not found in database" 
+        await newLoyalCustomer.save();
+        console.log("New loyal customer created");
+
+        return res.status(200).json({
+          valid: true,
+          customer: {
+            _id: newLoyalCustomer._id,
+            name: newLoyalCustomer.name,
+            phone: newLoyalCustomer.phone,
+            email: newLoyalCustomer.email,
+            point: newLoyalCustomer.point
+          }
         });
       }
     }
 
-    // Return user data in the format expected by frontend
-    return res.status(200).json({
-      valid: true,
-      customer: {
-        _id: user._id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-        point: user.point || 150
-      }
+    // If no customer found
+    console.log("Customer not found in any database");
+    return res.status(404).json({
+      valid: false,
+      message: "Customer not found in database"
     });
 
-  } catch (err) {
-    console.error("QR Check Error:", err);
-    return res.status(500).json({ 
+  } catch (error) {
+    console.error("QR Check Error:", error);
+    return res.status(500).json({
       valid: false,
-      error: "Internal Server Error" 
+      message: "Server error during QR verification"
     });
   }
 });
@@ -210,18 +231,61 @@ routerss.post("/done" , async(req,res)=>{
   }
 })
 
-// FIXED: Add points route
+// // @ts-ignore
+// routerss.post("/check", async (req, res) => {
+//   const tokenScanned = req.body.qrContent;
+//   if (!tokenScanned) {
+//     return res.status(400).json({ error: "QR content is required" });
+//   }
+
+//   try {
+//     // 1️⃣ Try to verify the QR token
+//     let payload;
+//     try {
+//       const decoded = jwts.verify(tokenScanned, JWT_SECRETSS);
+//       payload = decoded.qrPayload;
+//     } catch (err) {
+//       // not a valid token – fallback
+//       //@ts-ignore
+//        console.warn("Invalid or unverified QR token:", err.message);
+//       payload = tokenScanned;
+//     }
+
+//     // 2️⃣ Extract name and phone
+//     const [name, phone] = payload.split("-");
+
+//     if (!name || !phone) {
+//       return res.status(400).json({ error: "Invalid QR format" });
+//     }
+
+//     // 3️⃣ Find the customer
+//     const user = await AdminLoyalModel.findOne({ name, phone });
+
+//     if (!user) {
+//       return res.status(404).json({ message: "Customer not found" });
+//     }
+
+//     // 4️⃣ Success
+//     return res.status(200).json({
+//       message: "QR code verified successfully",
+//       user,
+//     });
+//   } catch (err) {
+//     console.error("QR Check Error:", err);
+//     return res.status(500).json({ error: "Internal Server Error" });
+//   }
+// });
+
+//@ts-ignore
 //@ts-ignore
 routerss.post("/add-points", async (req, res) => {
   try {
     //@ts-ignore
-    const { userId, points, serviceAmount } = req.body;
+    const { userId, points } = req.body;
 
     if (!userId || !points) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-
-    console.log("Adding points request:", { userId, points, serviceAmount });
 
     // Find the loyal customer
     const customer = await AdminLoyalModel.findById(userId);
@@ -252,15 +316,15 @@ routerss.post("/add-points", async (req, res) => {
 });
 
 //@ts-ignore
-//@ts-ignore
 routerss.get("/loyalty-leaderboard", async (req, res) => {
+  //@ts-ignore
   try {
     // Fetch all loyal customers and sort by points (highest first)
     const leaderboard = await AdminLoyalModel.find()
       .sort({ point: -1 }) // Sort descending by points
       .limit(50); // Limit to top 50 customers
 
-    return res.status(200).json({ // Changed from 500 to 200
+    return res.status(200).json({
       success: true,
       leaderboard: leaderboard
     });
@@ -270,5 +334,4 @@ routerss.get("/loyalty-leaderboard", async (req, res) => {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
 module.exports = routerss;
