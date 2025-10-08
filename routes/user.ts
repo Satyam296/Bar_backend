@@ -241,6 +241,7 @@ routers.post("/submit-review-proof", authMiddleware, async (req, res) => {
   }
 });
 //@ts-ignore
+//@ts-ignore
 routers.post("/check", async (req, res) => {
   try {
     const { qrContent } = req.body;
@@ -306,7 +307,7 @@ routers.post("/check", async (req, res) => {
     // If no customer found
     return res.status(404).json({
       valid: false,
-      message: "Customer not found or invalid QR code"
+      message: "Customer not found in database"
     });
 
   } catch (error) {
