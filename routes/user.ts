@@ -61,6 +61,71 @@ routers.post("/book", async (req, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+// Admin route - Get all bookings for a date
+//@ts-ignore
+routers.post("/all", async (req, res) => {
+  try {
+    const { date } = req.body;
+    console.log("Fetching bookings for date:", date);
+    
+    const bookings = await BookingsModels.find({ preferred_date: date });
+    
+    return res.status(200).json({
+      message: bookings
+    });
+  } catch (error) {
+    console.error("Error fetching bookings:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Admin route - Mark booking as done
+//@ts-ignore
+routers.post("/done", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    
+    const booking = await BookingsModels.findByIdAndUpdate(
+      userId, 
+      { done: true }, 
+      { new: true }
+    );
+    
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+    
+    return res.status(200).json({ 
+      message: "Booking marked as done",
+      booking 
+    });
+  } catch (error) {
+    console.error("Error updating booking:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Admin route - Get weekly bookings analytics
+//@ts-ignore
+routers.get("/weekly-bookings", async (req, res) => {
+  try {
+    // Get bookings from last 7 days
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const bookings = await BookingsModels.find({
+      preferred_date: { 
+        $gte: sevenDaysAgo.toISOString().split('T')[0] 
+      }
+    });
+    
+    return res.status(200).json({ bookings });
+  } catch (error) {
+    console.error("Error fetching weekly bookings:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 //@ts-ignore
 routers.post("/loyal", async (req, res) => {
@@ -74,34 +139,35 @@ routers.post("/loyal", async (req, res) => {
   try {
     const { name, phone, email } = req.body;
 
-    let existingUser = await LoyalModel.findOne({ name , phone, email });
+    let existingUser = await LoyalModel.findOne({ name, phone, email });
 
-    console.log("user") ; 
-    console.log(existingUser) ; 
+    console.log("user");
+    console.log(existingUser);
     if (!existingUser) {
       const qrPayload = `${name}-${phone}`;
-      console.log("Actual QR payload!!"); 
-      console.log(qrPayload) ; 
+      console.log("Actual QR payload!!");
+      console.log(qrPayload);
       const qrData = jwt.sign({
         qrPayload
       },
-    JWT_SECRETS ,
-    { noTimestamp: true }
-    )
-      const qrImage = await QRCode.toDataURL(qrPayload);
+        JWT_SECRETS,
+        { noTimestamp: true }
+      )
+      // ✅ Fix: Generate QR image from JWT token, not raw payload
+      const qrImage = await QRCode.toDataURL(qrData);
 
       const newLoyal = new LoyalModel({
         name,
         phone,
         email,
-        point: "150", 
+        point: "150",
         data: qrData,
         qrImage,
       });
 
       await newLoyal.save();
 
-      const userId = newLoyal._id ;    
+      const userId = newLoyal._id;
       const token = jwt.sign(
         {
           userId
@@ -111,7 +177,7 @@ routers.post("/loyal", async (req, res) => {
 
       return res.status(200).json({
         message: "Now a loyal customer!",
-        imp : token ,
+        imp: token,
         qrImage,
         points: "150",
       });
@@ -125,7 +191,7 @@ routers.post("/loyal", async (req, res) => {
       );
       return res.status(200).json({
         message: "Already a loyal customer!.",
-        imp : token , 
+        imp: token,
         points: existingUser.point,
         qrImage: existingUser.qrImage,
       });
@@ -135,6 +201,7 @@ routers.post("/loyal", async (req, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 //@ts-ignore
 routers.get("/loyal_name", authMiddleware , async(req,res) => {
@@ -173,5 +240,130 @@ routers.post("/submit-review-proof", authMiddleware, async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 });
+//@ts-ignore
+routers.post("/check", async (req, res) => {
+  try {
+    const { qrContent } = req.body;
+    
+    if (!qrContent) {
+      return res.status(400).json({ 
+        valid: false, 
+        message: "QR content is required" 
+      });
+    }
+
+    console.log("Received QR content:", qrContent);
+
+    // Try to verify if it's a JWT token first
+    try {
+      const decoded = jwt.verify(qrContent, JWT_SECRETS);
+      console.log("JWT decoded:", decoded);
+      
+      // If it's JWT, extract the payload
+      if (decoded.qrPayload) {
+        const [name, phone] = decoded.qrPayload.split('-');
+        console.log("Extracted from JWT - Name:", name, "Phone:", phone);
+        
+        const customer = await LoyalModel.findOne({ name, phone });
+        if (customer) {
+          return res.status(200).json({
+            valid: true,
+            customer: {
+              _id: customer._id,
+              name: customer.name,
+              phone: customer.phone,
+              email: customer.email,
+              point: customer.point
+            }
+          });
+        }
+      }
+    } catch (jwtError) {
+      //@ts-ignore
+      console.log("Not a valid JWT, trying direct payload search:", jwtError.message);
+    }
+
+    // If JWT verification fails, try direct payload search (name-phone format)
+    if (qrContent.includes('-')) {
+      const [name, phone] = qrContent.split('-');
+      console.log("Direct search - Name:", name, "Phone:", phone);
+      
+      const customer = await LoyalModel.findOne({ name, phone });
+      if (customer) {
+        return res.status(200).json({
+          valid: true,
+          customer: {
+            _id: customer._id,
+            name: customer.name,
+            phone: customer.phone,
+            email: customer.email,
+            point: customer.point
+          }
+        });
+      }
+    }
+
+    // If no customer found
+    return res.status(404).json({
+      valid: false,
+      message: "Customer not found or invalid QR code"
+    });
+
+  } catch (error) {
+    console.error("QR verification error:", error);
+    return res.status(500).json({
+      valid: false,
+      message: "Server error during QR verification"
+    });
+  }
+});
+
+// ADD THIS ENDPOINT - Add Points to Customer
+//@ts-ignore
+routers.post("/add-points", async (req, res) => {
+  try {
+    const { userId, points, serviceAmount } = req.body;
+    
+    if (!userId || !points) {
+      return res.status(400).json({ 
+        error: "User ID and points are required" 
+      });
+    }
+
+    const customer = await LoyalModel.findById(userId);
+    if (!customer) {
+      return res.status(404).json({ 
+        error: "Customer not found" 
+      });
+    }
+
+    // Add points to existing points
+    const currentPoints = parseInt(customer.point) || 0;
+    const newPoints = currentPoints + parseInt(points);
+    
+    customer.point = newPoints.toString();
+    await customer.save();
+
+    console.log(`Added ${points} points to ${customer.name}. New total: ${newPoints}`);
+
+    return res.status(200).json({
+      message: "Points added successfully",
+      updatedPoints: newPoints,
+      customer: {
+        _id: customer._id,
+        name: customer.name,
+        phone: customer.phone,
+        point: customer.point
+      }
+    });
+
+  } catch (error) {
+    console.error("Add points error:", error);
+    return res.status(500).json({
+      error: "Server error while adding points"
+    });
+  }
+});
+
 
 module.exports = routers; 
