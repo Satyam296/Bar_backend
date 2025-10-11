@@ -7,11 +7,8 @@ require("dotenv").config() ;
 //const JWT_SECRETS  =  require("../config/JWT_SECRET") ;
 const JWT_SECRETS = process.env.JWT_SECRET_KEY;
 const {authMiddleware} = require("./middleware");
-
 const routers = expresss.Router();
 routers.use(expresss.json());
-
-
 //@ts-ignore
 function formatZodErrors(zodError) {
 //@ts-ignore
@@ -21,7 +18,6 @@ function formatZodErrors(zodError) {
     },
   }));
 }
-
 const bookingSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email format"),
@@ -46,7 +42,6 @@ routers.post("/book", async (req, res) => {
     return res.status(400).json(errors);
   }
   const { name, phone } = req.body;
-  
   try {
     const loyal =await LoyalModel.findOne({name , phone}) ;
     const pointss = loyal?.point ?? 0; 
@@ -54,8 +49,7 @@ routers.post("/book", async (req, res) => {
     const newBooking = new BookingsModels(bookingData);   
     await newBooking.save();
     return res.status(200).json({ message: "Booking successful!" });
-  }
-  
+  }  
   catch (err) {
     console.error("Error saving booking:", err);
     return res.status(500).json({ error: "Internal server error" });
@@ -79,7 +73,6 @@ routers.post("/all", async (req, res) => {
   }
 });
 
-// Admin route - Mark booking as done
 //@ts-ignore
 routers.post("/done", async (req, res) => {
   try {
@@ -165,7 +158,6 @@ routers.post("/loyal", async (req, res) => {
         qrImage,
         reviewSubmitted: false // Initialize as false
       });
-
       await newLoyal.save();
 
       const userId = newLoyal._id;
@@ -175,7 +167,6 @@ routers.post("/loyal", async (req, res) => {
         },
         JWT_SECRETS
       );
-
       return res.status(200).json({
         message: "Now a loyal customer!",
         imp: token,
@@ -231,7 +222,7 @@ routers.post("/submit-review-proof", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Review already submitted" });
     }
 
-    user.point = (parseInt(user.point) + 50).toString();
+    user.point = (parseInt(user.point) + 500).toString();
     user.reviewSubmitted = true;
     await user.save();
 
