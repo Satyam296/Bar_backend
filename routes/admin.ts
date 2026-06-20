@@ -176,7 +176,7 @@ routerss.post("/done", adminAuthMiddleware, async (req, res) => {
 routerss.post("/add-points", adminAuthMiddleware, async (req, res) => {
   try {
     const { userId, points } = req.body;
-    if (!userId || !points) return res.status(400).json({ error: "Missing required fields" });
+    if (!userId || points === undefined || points === null) return res.status(400).json({ error: "Missing required fields" });
 
     const customer = await AdminLoyalModel.findById(userId);
     if (!customer) return res.status(404).json({ error: "Customer not found" });
@@ -184,16 +184,21 @@ routerss.post("/add-points", adminAuthMiddleware, async (req, res) => {
     const currentPoints = parseInt(customer.point) || 0;
     const newPoints = currentPoints + parseInt(points);
 
-    customer.point = newPoints.toString();
-    customer.reviewSubmitted = false;
-    await customer.save();
+    const updated = await AdminLoyalModel.findByIdAndUpdate(
+      userId,
+      { $set: { point: newPoints.toString(), reviewSubmitted: false } },
+      { new: true }
+    );
+
+    console.log(`ADD-POINTS: ${updated.name} | points: ${updated.point} | reviewSubmitted: ${updated.reviewSubmitted}`);
 
     return res.status(200).json({
       success: true,
       message: "Points added successfully",
       updatedPoints: newPoints,
     });
-  } catch {
+  } catch (err) {
+    console.error("Add points error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
