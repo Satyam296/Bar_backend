@@ -24,8 +24,7 @@ const LoyalSchema = new Schema({
     point : {type :String , default:0}  ,
     data: { type: String, required: true },
     qrImage: { type: String, default: "" },
-    reviewSubmitted: { type: Boolean, default: false },
-    reviewTexts: { type: [String], default: [] }
+    reviewSubmitted: { type: Boolean, default: false }
 })
 
 export const LoyalModel = model("Loyalsss", LoyalSchema) ;

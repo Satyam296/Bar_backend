@@ -107,77 +107,12 @@ routers.get("/loyal_name", authMiddleware, async (req, res) => {
 });
 
 //@ts-ignore
-function levenshtein(a, b) {
-  const matrix = Array.from({ length: a.length + 1 }, () =>
-    Array(b.length + 1).fill(0)
-  );
-  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
-  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      matrix[i][j] =
-        a[i - 1] === b[j - 1]
-          ? matrix[i - 1][j - 1]
-          : Math.min(
-              matrix[i - 1][j] + 1,
-              matrix[i][j - 1] + 1,
-              matrix[i - 1][j - 1] + 1
-            );
-    }
-  }
-  return matrix[a.length][b.length];
-}
-
-//@ts-ignore
-function textSimilarity(a, b) {
-  const maxLen = Math.max(a.length, b.length);
-  if (maxLen === 0) return 1;
-  return 1 - levenshtein(a, b) / maxLen;
-}
-
-//@ts-ignore
-function normalizeText(text) {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-//@ts-ignore
 routers.post("/submit-review-proof", authMiddleware, async (req, res) => {
   try {
     const user = await LoyalModel.findById(req.userId);
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.reviewSubmitted) return res.status(400).json({ message: "Review already submitted for this visit." });
 
-    const { ocrText } = req.body;
-    if (!ocrText || typeof ocrText !== "string" || ocrText.trim().length < 10) {
-      return res.status(400).json({ message: "Invalid review screenshot. Please upload a clear screenshot." });
-    }
-
-    const normalized = normalizeText(ocrText);
-
-    const allUsers = await LoyalModel.find({ reviewTexts: { $exists: true, $ne: [] } });
-    let isDuplicate = false;
-    for (const u of allUsers) {
-      //@ts-ignore
-      for (const prev of u.reviewTexts) {
-        if (textSimilarity(normalizeText(prev), normalized) > 0.80) {
-          isDuplicate = true;
-          break;
-        }
-      }
-      if (isDuplicate) break;
-    }
-
-    if (isDuplicate) {
-      return res.status(400).json({
-        message: "This review screenshot has already been submitted. Please post a new Google review to earn points.",
-      });
-    }
-
-    user.reviewTexts.push(ocrText.trim());
     user.point = (parseInt(user.point) + 500).toString();
     user.reviewSubmitted = true;
     await user.save();
