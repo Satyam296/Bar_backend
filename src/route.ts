@@ -1,3 +1,4 @@
+require("dotenv").config();
 const mainRouter = require("../routes/index");
 const cors = require("cors");
 const express = require("express");
@@ -11,6 +12,7 @@ app.use(express.json());
 
 console.log(JWT_SECRET);
 
+app.get("/health", (req: any, res: any) => res.json({ status: "ok" }));
 app.use("/api/v1/", mainRouter);
 
 app.listen(PORT, () => {
